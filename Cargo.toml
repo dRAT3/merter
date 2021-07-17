@@ -1,0 +1,19 @@
+[package]
+name = "merter"
+version = "0.1.0"
+authors = ["dRAT3 <dRAT3@protonmail.ch>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = {version = "0.11.3", features = ["json"]}
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0.126", features = ["derive"]}
+serde_json = "1"
+awaitgroup = "0.6.0"
+clap = "2.33.3"
+config = "0.11.0"
+dirs = "3.0"
+toml = "0.5.8"
+text_io = "0.1.8"
