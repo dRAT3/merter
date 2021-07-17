@@ -34,8 +34,6 @@ pub struct EthBlockCtResponse {
     result: String,
 }
 
-type Db = Arc<Mutex<HashMap<String, bool>>>;
-
 async fn get_block_addresses() -> Result<EthBlockTxResponse, reqwest::Error> {
     let new_eth_request = EthRequest {
         jsonrpc: "2.0".to_string(),

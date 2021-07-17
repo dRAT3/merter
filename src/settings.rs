@@ -44,7 +44,7 @@ pub struct Settings {
 
 impl Settings {
     /// Returns the settings, Settings::new reads the settings file in the config dir
-    /// and initializes it as a struct that can be read from. If there is a local config
+    /// and initializes it as a public struct that can be read from. If there is a local config
     /// file in the same dir as the executable it takes precedence over the config file
     /// in the config dir.
     ///
@@ -90,7 +90,11 @@ impl Settings {
         s.try_into()
     }
 }
-
+/// Creates a config file .ethconf or .bscconf in the dir dirs::config_dir (see crate dirs).
+/// If it is on a system without a config_dir it will create a config file in the working
+/// directory of the executable.
+///
+/// #Arguments - All the arguments from the Settings struct.
 pub fn create(
     chain: &str,
     jsonrpc_str: &str,

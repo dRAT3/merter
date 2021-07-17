@@ -19,6 +19,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+
+type Db = Arc<Mutex<HashMap<String, bool>>>;
+
 static JSONRPCAPI: &'static str = "";
 static BSCSCANAPI: &'static str = "";
 
@@ -177,16 +180,38 @@ or bnb.",
 }
 
 fn run_setup(chain: &str) {
-    println!(
-        "Are you shure you want to overwrite settings file: .{}conf.toml (y/n)",
-        chain
-    );
-    let answ: String = text_io::read!("{}\n");
-    if answ.eq_ignore_ascii_case("y") || answ.eq_ignore_ascii_case("yes") {
-    } else {
-        std::process::exit(1);
-    }
+    match dirs::config_dir() {
+        Some(mut v) => {
+            v.push("merter");
+            let v_copy = v.clone();
+            
+            if chain == "eth" {
+                v.push(".ethconf");
+            }
+            if chain == "bsc" {
+                v.push(".bscconf");
+            }
+            v.set_extension("toml");
 
+            let path_str = v.into_os_string().into_string().unwrap();
+
+            if std::path::Path::new(&path_str).exists() {
+                println!(
+                    "Are you shure you want to overwrite settings file: .{}conf.toml (y/n)",
+                    chain
+                );
+                let answ: String = text_io::read!("{}\n");
+                if answ.eq_ignore_ascii_case("y") || answ.eq_ignore_ascii_case("yes") {
+                } else {
+                std::process::exit(1);
+                }
+            }
+        }
+        None => {
+            ;
+        }
+
+    
     println!("Enter JSON-RPC 1 api url:");
     let jsonrpc_str: String = text_io::read!("{}\n");
 
