@@ -1,3 +1,11 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+type Db = Arc<Mutex<HashMap<String, bool>>>;
+
+static JSONRPCAPI: &'static str = "";
+static BSCSCANAPI: &'static str = "";
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Params {

@@ -43,53 +43,91 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// Returns the settings, Settings::new reads the settings file in the config dir
-    /// and initializes it as a public struct that can be read from. If there is a local config
-    /// file in the same dir as the executable it takes precedence over the config file
-    /// in the config dir.
+    /// Reads the settings file in the config dir and initializes it as a public struct
+    /// If there is a local config file in the executable's working directory it takes
+    /// precedence over the config file in the config dir.
     ///
     /// # Arguments
     ///
     /// * `chain` - A string slice that holds the current chain, will decide which config file
     ///             to use.
-
+    ///
     pub fn new(chain: &str) -> Result<Self, ConfigError> {
         let mut s = Config::default();
-        match dirs::config_dir() {
-            Some(mut v) => {
-                v.push("merter");
-                if chain == "eth" {
-                    v.push(".ethconf");
-                }
-                if chain == "bsc" {
-                    v.push(".bscconf")
-                }
-                v.set_extension("toml");
-                let path_str = v.into_os_string().into_string().unwrap();
-                s.merge(File::with_name(&path_str).required(false))?;
+
+        // Merge settings from config dir
+        match return_config_path(chain) {
+            Ok(config_path) => {
+                s.merge(File::with_name(&config_path).required(false))?;
             }
-            None => {}
-        }
-        match std::env::current_exe() {
-            Ok(mut exe_path) => {
-                exe_path.pop();
-                if chain == "eth" {
-                    exe_path.push(".ethconf");
-                }
-                if chain == "bsc" {
-                    exe_path.push(".bscconf");
-                }
-                exe_path.set_extension("toml");
-                let path_str = exe_path.into_os_string().into_string().unwrap();
-                s.merge(File::with_name("config/local").required(false))?;
+            Err(e) => {
+                println!(
+                    "Can't find config directory, trying to read from current working directory"
+                );
             }
-            Err(e) => println!("failed to get current exe path: {}", e),
         }
+
+        // Merge settings from executable's working dir
+        match return_local_path(chain) {
+            Ok(local_path) => {
+                s.merge(File::with_name(&local_path).required(false))?;
+            }
+            Err(e) => {
+                println!("{}", e);
+            }
+        }
+
+        // #TODO: Check if values are loaded/valid
 
         // You can deserialize (and thus freeze) the entire configuration as
         s.try_into()
     }
 }
+
+/// Returns the location of the config file in the dirs::config_dir, for the selected chain.
+///
+pub fn return_config_path(chain: &str) -> Result<std::string::String, Box<dyn std::error::Error>> {
+    match dirs::config_dir() {
+        Some(mut v) => {
+            v.push("merter");
+
+            if chain == "eth" {
+                v.push(".ethconf");
+            }
+            if chain == "bsc" {
+                v.push(".bscconf")
+            }
+            v.set_extension("toml");
+
+            let path_str = v.into_os_string().into_string().unwrap();
+
+            Ok(path_str)
+        }
+        None => Err("Config dir not found".into()),
+    }
+}
+
+/// Returns the location of the config file in the current working directory of the executable.
+pub fn return_local_path(chain: &str) -> Result<std::string::String, Box<dyn std::error::Error>> {
+    match std::env::current_exe() {
+        Ok(mut exe_path) => {
+            exe_path.pop();
+            if chain == "eth" {
+                exe_path.push(".ethconf");
+            }
+            if chain == "bsc" {
+                exe_path.push(".bscconf");
+            }
+            exe_path.set_extension("toml");
+
+            let path_str = exe_path.into_os_string().into_string().unwrap();
+
+            Ok(path_str)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Creates a config file .ethconf or .bscconf in the dir dirs::config_dir (see crate dirs).
 /// If it is on a system without a config_dir it will create a config file in the working
 /// directory of the executable.
@@ -106,6 +144,7 @@ pub fn create(
     db_path: &str,
     file_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Create struct and convert to toml string.
     let settings_struct = Settings {
         storage: Storage {
             db_path: db_path.to_string(),
@@ -124,47 +163,36 @@ pub fn create(
             key: mythx_api.to_string(),
         },
     };
-
     let toml = toml::to_string(&settings_struct).unwrap();
-    let mut path_str = String::new();
 
+    // Create config directory
     match dirs::config_dir() {
-        Some(mut v) => {
-            v.push("merter");
-            let v_copy = v.clone();
-            let dir = v_copy.into_os_string().into_string().unwrap();
-            std::fs::create_dir_all(dir).unwrap();
-            if chain == "eth" {
-                v.push(".ethconf");
-            }
-            if chain == "bsc" {
-                v.push(".bscconf");
-            }
-            v.set_extension("toml");
-            path_str = v.into_os_string().into_string().unwrap();
+        Some(mut dir) => {
+            dir.push("merter");
+            let dir_str = dir.into_os_string().into_string().unwrap();
+            std::fs::create_dir_all(dir_str)?;
         }
-        None => match std::env::current_exe() {
-            Ok(mut exe_path) => {
-                exe_path.pop();
-                if chain == "eth" {
-                    exe_path.push(".ethconf");
-                }
-                if chain == "bsc" {
-                    exe_path.push(".bscconf");
-                }
-                exe_path.set_extension("toml");
-                path_str = exe_path.into_os_string().into_string().unwrap();
-            }
-            Err(e) => println!("failed to get current exe path: {}", e),
-        },
+        None => {}
     }
 
-    let path_str_clone = path_str.clone();
-    let mut file = std::fs::File::create(path_str)?;
+    // Get path to config file either in config dir or in executable's
+    // working dir. If the latter doesn't work exit(1)
+    let config_path = return_config_path(chain)
+        .or_else(|err| {
+            println!("Error: {}, falling back to working directory", err);
+            return_local_path(chain)
+        })
+        .unwrap_or_else(|err| {
+            println!("{}", err);
+            std::process::exit(1);
+        });
+
+    // Write config file
+    let mut file = std::fs::File::create(&config_path)?;
     file.write_all(toml.as_bytes())?;
     file.sync_all()?;
 
-    println!("{} written!", &path_str_clone);
+    println!("{} written!", &config_path);
 
     Ok(())
 }

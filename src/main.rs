@@ -14,19 +14,13 @@ mod jsonrpc;
 mod settings;
 
 use awaitgroup::WaitGroup;
-use clap::{App, AppSettings, Arg, ArgGroup, ErrorKind};
+use clap::{App, AppSettings, Arg, ArgGroup};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-
-type Db = Arc<Mutex<HashMap<String, bool>>>;
-
-static JSONRPCAPI: &'static str = "";
-static BSCSCANAPI: &'static str = "";
 
 /// Grabs the arguments from terminal and execute the correct branch. Currently there exist
-/// three branches. More might be implemented in the future.
+/// three branches (run_config(), run_csv() and run_find().
+///
+/// More might be implemented in the future.
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -180,38 +174,29 @@ or bnb.",
 }
 
 fn run_setup(chain: &str) {
-    match dirs::config_dir() {
-        Some(mut v) => {
-            v.push("merter");
-            let v_copy = v.clone();
-            
-            if chain == "eth" {
-                v.push(".ethconf");
-            }
-            if chain == "bsc" {
-                v.push(".bscconf");
-            }
-            v.set_extension("toml");
+    let config_path = settings::return_config_path(chain)
+        .or_else(|err| {
+            println!("Error: {}, falling back to working directory", err);
+            settings::return_local_path(chain)
+        })
+        .unwrap_or_else(|err| {
+            println!("{}", err);
+            std::process::exit(1);
+        });
 
-            let path_str = v.into_os_string().into_string().unwrap();
+    if std::path::Path::new(&config_path).exists() {
+        println!(
+            "Are you shure you want to overwrite settings file: {} (y/n)",
+            config_path
+        );
+        let answ: String = text_io::read!("{}\n");
 
-            if std::path::Path::new(&path_str).exists() {
-                println!(
-                    "Are you shure you want to overwrite settings file: .{}conf.toml (y/n)",
-                    chain
-                );
-                let answ: String = text_io::read!("{}\n");
-                if answ.eq_ignore_ascii_case("y") || answ.eq_ignore_ascii_case("yes") {
-                } else {
-                std::process::exit(1);
-                }
-            }
+        if answ.eq_ignore_ascii_case("y") || answ.eq_ignore_ascii_case("yes") {
+        } else {
+            std::process::exit(1);
         }
-        None => {
-            ;
-        }
+    }
 
-    
     println!("Enter JSON-RPC 1 api url:");
     let jsonrpc_str: String = text_io::read!("{}\n");
 
