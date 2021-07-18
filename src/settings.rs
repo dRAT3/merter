@@ -1,12 +1,13 @@
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
 use std::io::prelude::*;
+use std::path::PathBuf;
 
-/// Represents path to scan for database
-/// and path where files shall be created
+/// Represents database url and path where
+/// files shall be created
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Storage {
-    pub db_path: String,
+    pub db_url: String,
     pub file_path: String,
 }
 
@@ -33,7 +34,7 @@ pub struct MythX {
     pub key: String,
 }
 
-/// This represents the settings as set in the config file
+/// Represents the settings as in the config file
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Settings {
     pub storage: Storage,
@@ -58,26 +59,32 @@ impl Settings {
         // Merge settings from config dir
         match return_config_path(chain) {
             Ok(config_path) => {
-                s.merge(File::with_name(&config_path).required(false))?;
+                s.merge(File::from(config_path).required(false))?;
             }
             Err(e) => {
-                println!(
-                    "Can't find config directory, trying to read from current working directory"
-                );
+                println!("Error: {}, falling back to working directory", e);
             }
         }
 
         // Merge settings from executable's working dir
         match return_local_path(chain) {
             Ok(local_path) => {
-                s.merge(File::with_name(&local_path).required(false))?;
+                s.merge(File::from(local_path).required(false))?;
             }
             Err(e) => {
                 println!("{}", e);
             }
         }
 
-        // #TODO: Check if values are loaded/valid
+        // Check if values can be read, and contain data.
+        let jsonrpc_str = s.get_str("jsonrpc.url_1")?;
+        let jsonrpc_str_2 = s.get_str("jsonrpc.url_2")?;
+        let latency_1 = s.get_int("jsonrpc.latency_1")?;
+        let latency_2 = s.get_int("jsonrpc.latency_2")?;
+        let scan_api = s.get_str("scan.key")?;
+        let mythx_api = s.get_str("mythx.key")?;
+        let db_path = s.get_str("storage.db_url")?;
+        let file_path = s.get_str("storage.file_path")?;
 
         // You can deserialize (and thus freeze) the entire configuration as
         s.try_into()
@@ -85,8 +92,7 @@ impl Settings {
 }
 
 /// Returns the location of the config file in the dirs::config_dir, for the selected chain.
-///
-pub fn return_config_path(chain: &str) -> Result<std::string::String, Box<dyn std::error::Error>> {
+pub fn return_config_path(chain: &str) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     match dirs::config_dir() {
         Some(mut v) => {
             v.push("merter");
@@ -98,17 +104,14 @@ pub fn return_config_path(chain: &str) -> Result<std::string::String, Box<dyn st
                 v.push(".bscconf")
             }
             v.set_extension("toml");
-
-            let path_str = v.into_os_string().into_string().unwrap();
-
-            Ok(path_str)
+            Ok(v)
         }
         None => Err("Config dir not found".into()),
     }
 }
 
 /// Returns the location of the config file in the current working directory of the executable.
-pub fn return_local_path(chain: &str) -> Result<std::string::String, Box<dyn std::error::Error>> {
+pub fn return_local_path(chain: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
     match std::env::current_exe() {
         Ok(mut exe_path) => {
             exe_path.pop();
@@ -120,9 +123,7 @@ pub fn return_local_path(chain: &str) -> Result<std::string::String, Box<dyn std
             }
             exe_path.set_extension("toml");
 
-            let path_str = exe_path.into_os_string().into_string().unwrap();
-
-            Ok(path_str)
+            Ok(exe_path)
         }
         Err(e) => Err(e.into()),
     }
@@ -147,7 +148,7 @@ pub fn create(
     // Create struct and convert to toml string.
     let settings_struct = Settings {
         storage: Storage {
-            db_path: db_path.to_string(),
+            db_url: db_path.to_string(),
             file_path: file_path.to_string(),
         },
         jsonrpc: JsonRpc {
@@ -169,8 +170,7 @@ pub fn create(
     match dirs::config_dir() {
         Some(mut dir) => {
             dir.push("merter");
-            let dir_str = dir.into_os_string().into_string().unwrap();
-            std::fs::create_dir_all(dir_str)?;
+            std::fs::create_dir_all(dir)?;
         }
         None => {}
     }
@@ -192,7 +192,7 @@ pub fn create(
     file.write_all(toml.as_bytes())?;
     file.sync_all()?;
 
-    println!("{} written!", &config_path);
+    println!("{} written!", &config_path.display());
 
     Ok(())
 }

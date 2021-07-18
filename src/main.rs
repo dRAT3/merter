@@ -16,6 +16,7 @@ mod settings;
 use awaitgroup::WaitGroup;
 use clap::{App, AppSettings, Arg, ArgGroup};
 use serde::{Deserialize, Serialize};
+use std::io::{self, BufRead};
 
 /// Grabs the arguments from terminal and execute the correct branch. Currently there exist
 /// three branches (run_config(), run_csv() and run_find().
@@ -123,7 +124,6 @@ or bnb.",
         )
         .get_matches();
 
-    //Setting the chain
     let mut chain: String = String::new();
     if res.is_present("ethereum") {
         chain = "eth".to_string();
@@ -132,38 +132,33 @@ or bnb.",
         chain = "bsc".to_string();
     }
 
-    //Setting the minimum balance
-    let mut min_balance: f32 = 0.0;
-    match res.value_of("balance").unwrap_or("0").parse::<f32>() {
-        Ok(v) => {
-            min_balance = v;
-        }
-        Err(e) => {
-            println!("{}", e);
+    let min_balance = res
+        .value_of("balance")
+        .unwrap_or("0")
+        .parse::<f32>()
+        .unwrap_or_else(|_| {
+            println!("Error: --balance option must be a number");
             std::process::exit(1);
-        }
-    }
+        });
 
-    //Setting the max limit of scans
-    let mut limit: u32 = 0;
-    match res.value_of("limit").unwrap_or("0").parse::<u32>() {
-        Ok(v) => {
-            limit = v;
-        }
-        Err(e) => {
-            println!("{}", e);
+    let scan_limit = res
+        .value_of("limit")
+        .unwrap_or("0")
+        .parse::<u32>()
+        .unwrap_or_else(|_| {
+            println!("Error: --limit option must be a positive number");
             std::process::exit(1);
-        }
-    }
+        });
 
-    //Choosing the correct branch to execute.
+    //Choosing branch to execute.
     if res.is_present("config") {
         run_setup(&chain);
     }
 
     if res.is_present("csv") {
+        let csv_file = res.value_of_os("csv").unwrap();
         println!("Running in csv mode");
-        run_csv(&chain, &min_balance, &limit).await?;
+        run_csv(&chain, &min_balance, &scan_limit).await?;
     }
 
     if res.is_present("find") {
@@ -184,10 +179,10 @@ fn run_setup(chain: &str) {
             std::process::exit(1);
         });
 
-    if std::path::Path::new(&config_path).exists() {
+    if config_path.exists() {
         println!(
             "Are you shure you want to overwrite settings file: {} (y/n)",
-            config_path
+            config_path.display()
         );
         let answ: String = text_io::read!("{}\n");
 
@@ -209,16 +204,13 @@ fn run_setup(chain: &str) {
     println!("Enter JSON-RPC 2's latency in ms");
     let latency_2: u32 = text_io::read!("{}\n");
 
-    let mut scan_api: String = String::new();
     if chain == "eth" {
         println!("Enter EtherScan API key:");
-        scan_api = text_io::read!("{}\n");
     }
-
     if chain == "bsc" {
         println!("Enter BscScan API key:");
-        scan_api = text_io::read!("{}\n");
     }
+    let scan_api: String = text_io::read!("{}\n");
 
     println!("Enter MythX API key:");
     let mythx_api: String = text_io::read!("{}\n");
@@ -249,11 +241,11 @@ async fn run_csv(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match settings::Settings::new(chain) {
         Ok(setting) => {
-            println!("settings test {:?}", setting.storage.db_path);
+            println!("settings test {:?}", setting.storage.file_path);
         }
         Err(e) => {
             println!(
-                "Error while loading settings {:?} 
+                "Error while loading settings: {:?} 
                 \nTry running merter --config --{}",
                 e, chain
             );
