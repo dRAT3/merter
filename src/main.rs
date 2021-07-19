@@ -16,7 +16,6 @@ mod settings;
 use awaitgroup::WaitGroup;
 use clap::{App, AppSettings, Arg, ArgGroup};
 use serde::{Deserialize, Serialize};
-use std::io::{self, BufRead};
 
 /// Grabs the arguments from terminal and execute the correct branch. Currently there exist
 /// three branches (run_config(), run_csv() and run_find().
@@ -193,10 +192,10 @@ fn run_setup(chain: &str) {
     }
 
     println!("Enter JSON-RPC 1 api url:");
-    let jsonrpc_str: String = text_io::read!("{}\n");
+    let jsonrpc_url: String = text_io::read!("{}\n");
 
     println!("Enter JSON-RPC 2 api url (optional):");
-    let jsonrpc_str_2: String = text_io::read!("{}\n");
+    let jsonrpc_url_2: String = text_io::read!("{}\n");
 
     println!("Enter JSON-RPC 1's latency in ms");
     let latency_1: u32 = text_io::read!("{}\n");
@@ -215,23 +214,28 @@ fn run_setup(chain: &str) {
     println!("Enter MythX API key:");
     let mythx_api: String = text_io::read!("{}\n");
 
-    println!("Enter db location (if it doesn't exist it will create a new db):");
-    let db_path: String = text_io::read!("{}\n");
+    println!("Enter db url for :");
+    let db_url: String = text_io::read!("{}\n");
 
     println!("Enter folder where downloaded contracts will be stored:");
     let file_path: String = text_io::read!("{}\n");
 
-    let ret = settings::create(
-        chain,
-        &jsonrpc_str,
-        &jsonrpc_str_2,
+    let toml = settings::create_conf_toml(
+        &db_url,
+        &file_path,
+        &jsonrpc_url,
+        &jsonrpc_url_2,
         &latency_1,
         &latency_2,
         &scan_api,
         &mythx_api,
-        &db_path,
-        &file_path,
-    );
+    )
+    .unwrap_or_else(|err| {
+        println!("Error: Couldn't parse data as toml. \n {}", err);
+        std::process::exit(1);
+    });
+
+    let ret = settings::create_conf_file(&config_path, toml);
 }
 
 async fn run_csv(

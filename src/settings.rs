@@ -1,7 +1,7 @@
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Represents database url and path where
 /// files shall be created
@@ -129,31 +129,27 @@ pub fn return_local_path(chain: &str) -> Result<PathBuf, Box<dyn std::error::Err
     }
 }
 
-/// Creates a config file .ethconf or .bscconf in the dir dirs::config_dir (see crate dirs).
-/// If it is on a system without a config_dir it will create a config file in the working
-/// directory of the executable.
-///
-/// #Arguments - All the arguments from the Settings struct.
-pub fn create(
-    chain: &str,
-    jsonrpc_str: &str,
-    jsonrpc_str_2: &str,
+/// Takes the Settings values as string slices and returns
+/// them as a String with toml formatting
+pub fn create_conf_toml(
+    db_url: &str,
+    file_path: &str,
+    jsonrpc_url: &str,
+    jsonrpc_url_2: &str,
     latency_1: &u32,
     latency_2: &u32,
     scan_api: &str,
     mythx_api: &str,
-    db_path: &str,
-    file_path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>> {
     // Create struct and convert to toml string.
     let settings_struct = Settings {
         storage: Storage {
-            db_url: db_path.to_string(),
+            db_url: db_url.to_string(),
             file_path: file_path.to_string(),
         },
         jsonrpc: JsonRpc {
-            url_1: jsonrpc_str.to_string(),
-            url_2: jsonrpc_str_2.to_string(),
+            url_1: jsonrpc_url.to_string(),
+            url_2: jsonrpc_url_2.to_string(),
             latency_1: *latency_1,
             latency_2: *latency_2,
         },
@@ -164,35 +160,71 @@ pub fn create(
             key: mythx_api.to_string(),
         },
     };
-    let toml = toml::to_string(&settings_struct).unwrap();
+    let toml = toml::to_string(&settings_struct)?;
 
-    // Create config directory
-    match dirs::config_dir() {
-        Some(mut dir) => {
-            dir.push("merter");
-            std::fs::create_dir_all(dir)?;
-        }
-        None => {}
-    }
+    Ok(toml)
+}
 
-    // Get path to config file either in config dir or in executable's
-    // working dir. If the latter doesn't work exit(1)
-    let config_path = return_config_path(chain)
-        .or_else(|err| {
-            println!("Error: {}, falling back to working directory", err);
-            return_local_path(chain)
-        })
-        .unwrap_or_else(|err| {
-            println!("{}", err);
-            std::process::exit(1);
-        });
+pub fn create_conf_file(
+    config_path: &Path,
+    toml: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Create parent directory of config file
+    let mut config_dir = PathBuf::from(config_path);
+    config_dir.pop();
+    std::fs::create_dir_all(config_dir)?;
 
     // Write config file
-    let mut file = std::fs::File::create(&config_path)?;
+    let mut file = std::fs::File::create(config_path)?;
     file.write_all(toml.as_bytes())?;
     file.sync_all()?;
 
-    println!("{} written!", &config_path.display());
+    println!("{} written!", config_path.display());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_toml_formatting_and_correct_values() {
+        let toml = create_conf_toml(
+            "dbtest",
+            "filetest",
+            "jsontest1",
+            "jsontest2",
+            &40,
+            &41,
+            "scantest",
+            "mythtest",
+        )
+        .unwrap();
+
+        let test_values = vec![
+            "[storage]",
+            "db_url = \"dbtest\"",
+            "file_path = \"filetest\"",
+            "",
+            "[jsonrpc]",
+            "url_1 = \"jsontest1\"",
+            "url_2 = \"jsontest2\"",
+            "latency_1 = 40",
+            "latency_2 = 41",
+            "",
+            "[scan]",
+            "key = \"scantest\"",
+            "",
+            "[mythx]",
+            "key = \"mythtest\"",
+        ];
+
+        let mut test_values_iter = test_values.iter();
+        let mut toml_iter = toml.lines();
+        assert!(
+            test_values_iter.all(|&x| Some(x) == toml_iter.next()),
+            "One of the lines in the toml string doesn't match the expected output"
+        );
+    }
 }
