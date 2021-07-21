@@ -151,7 +151,7 @@ or bnb.",
 
     //Choosing branch to execute.
     if res.is_present("config") {
-        run_setup(&chain);
+        settings::run_setup(&chain);
     }
 
     if res.is_present("csv") {
@@ -165,77 +165,6 @@ or bnb.",
     }
 
     Ok(())
-}
-
-fn run_setup(chain: &str) {
-    let config_path = settings::return_config_path(chain)
-        .or_else(|err| {
-            println!("Error: {}, falling back to working directory", err);
-            settings::return_local_path(chain)
-        })
-        .unwrap_or_else(|err| {
-            println!("{}", err);
-            std::process::exit(1);
-        });
-
-    if config_path.exists() {
-        println!(
-            "Are you shure you want to overwrite settings file: {} (y/n)",
-            config_path.display()
-        );
-        let answ: String = text_io::read!("{}\n");
-
-        if answ.eq_ignore_ascii_case("y") || answ.eq_ignore_ascii_case("yes") {
-        } else {
-            std::process::exit(1);
-        }
-    }
-
-    println!("Enter JSON-RPC 1 api url:");
-    let jsonrpc_url: String = text_io::read!("{}\n");
-
-    println!("Enter JSON-RPC 2 api url (optional):");
-    let jsonrpc_url_2: String = text_io::read!("{}\n");
-
-    println!("Enter JSON-RPC 1's latency in ms");
-    let latency_1: u32 = text_io::read!("{}\n");
-
-    println!("Enter JSON-RPC 2's latency in ms");
-    let latency_2: u32 = text_io::read!("{}\n");
-
-    if chain == "eth" {
-        println!("Enter EtherScan API key:");
-    }
-    if chain == "bsc" {
-        println!("Enter BscScan API key:");
-    }
-    let scan_api: String = text_io::read!("{}\n");
-
-    println!("Enter MythX API key:");
-    let mythx_api: String = text_io::read!("{}\n");
-
-    println!("Enter db url for :");
-    let db_url: String = text_io::read!("{}\n");
-
-    println!("Enter folder where downloaded contracts will be stored:");
-    let file_path: String = text_io::read!("{}\n");
-
-    let toml = settings::create_conf_toml(
-        &db_url,
-        &file_path,
-        &jsonrpc_url,
-        &jsonrpc_url_2,
-        &latency_1,
-        &latency_2,
-        &scan_api,
-        &mythx_api,
-    )
-    .unwrap_or_else(|err| {
-        println!("Error: Couldn't parse data as toml. \n {}", err);
-        std::process::exit(1);
-    });
-
-    let ret = settings::create_conf_file(&config_path, toml);
 }
 
 async fn run_csv(

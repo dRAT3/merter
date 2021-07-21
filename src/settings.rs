@@ -76,23 +76,128 @@ impl Settings {
             }
         }
 
-        // Check if values can be read, and contain data.
-        let jsonrpc_str = s.get_str("jsonrpc.url_1")?;
-        let jsonrpc_str_2 = s.get_str("jsonrpc.url_2")?;
-        let latency_1 = s.get_int("jsonrpc.latency_1")?;
-        let latency_2 = s.get_int("jsonrpc.latency_2")?;
-        let scan_api = s.get_str("scan.key")?;
-        let mythx_api = s.get_str("mythx.key")?;
-        let db_path = s.get_str("storage.db_url")?;
-        let file_path = s.get_str("storage.file_path")?;
-
         // You can deserialize (and thus freeze) the entire configuration as
         s.try_into()
     }
+
+    /// Creates an empty settings struct
+    fn default() -> Self {
+        Settings {
+            storage: Storage {
+                db_url: "".to_string(),
+                file_path: "".to_string(),
+            },
+            jsonrpc: JsonRpc {
+                url_1: "".to_string(),
+                url_2: "".to_string(),
+                latency_1: 0,
+                latency_2: 0,
+            },
+            scan: Scan {
+                key: "".to_string(),
+            },
+            mythx: MythX {
+                key: "".to_string(),
+            },
+        }
+    }
+}
+
+///Gets the config path, asks for the settings and write to config file. If the config dir
+///doesn't exist it will create the conf file in the working dir of the executable.
+pub fn run_setup(chain: &str) {
+    let config_path = return_config_path(chain)
+        .or_else(|err| {
+            println!(
+                "Error: Couldn't find config directory, falling back to working directory \n{}",
+                err
+            );
+            return_local_path(chain)
+        })
+        .unwrap_or_else(|err| {
+            println!("Error: Couldn't find working directory, exiting \n{}", err);
+            std::process::exit(1);
+        });
+
+    let setup_struct = ask_for_settings(chain, &config_path);
+
+    let toml = toml::to_string(&setup_struct).unwrap_or_else(|err| {
+        println!("Error: Couldn't parse settings as toml. \n {}", err);
+        std::process::exit(1);
+    });
+
+    create_conf_file(&config_path, toml).unwrap_or_else(|err| {
+        println!("Error: Couldn't write settings file. \n {}", err);
+        std::process::exit(1);
+    });
+
+    println!("{} written!", config_path.display());
+}
+
+/// Asks the user for all the configurations in settings::Setting.
+fn ask_for_settings(chain: &str, config_path: &Path) -> Settings {
+    println!(
+        "Are you shure you want to overwrite settings file: {} (y/n)",
+        config_path.display()
+    );
+    let answ: String = text_io::read!("{}\n");
+
+    if answ.eq_ignore_ascii_case("y") || answ.eq_ignore_ascii_case("yes") {
+    } else {
+        std::process::exit(1);
+    }
+
+    let mut setup_struct = Settings::default();
+
+    while !valid_url(&setup_struct.jsonrpc.url_1) {
+        println!("Enter JSON-RPC 1 api url:");
+        setup_struct.jsonrpc.url_1 = text_io::read!("{}\n");
+        println!("url invalid, use http(s)://");
+    }
+
+    while !valid_url(&setup_struct.jsonrpc.url_2) {
+        println!("Enter JSON-RPC 2 api url (optional press s to skip):");
+        setup_struct.jsonrpc.url_2 = text_io::read!("{}\n");
+        if setup_struct.jsonrpc.url_2.eq("s") {
+            break;
+        }
+        println!("url invalid, use http(s)://");
+    }
+
+    println!("Enter JSON-RPC 1's latency in ms");
+    setup_struct.jsonrpc.latency_1 = text_io::read!("{}\n");
+
+    if setup_struct.jsonrpc.url_2.chars().count() > 2 {
+        println!("Enter JSON-RPC 2's latency in ms");
+        setup_struct.jsonrpc.latency_2 = text_io::read!("{}\n");
+    }
+
+    if chain == "eth" {
+        println!("Enter EtherScan API key:");
+    }
+    if chain == "bsc" {
+        println!("Enter BscScan API key:");
+    }
+    setup_struct.scan.key = text_io::read!("{}\n");
+
+    println!("Enter MythX API key:");
+    setup_struct.mythx.key = text_io::read!("{}\n");
+
+    while !valid_url(&setup_struct.jsonrpc.url_1) {
+        println!("Enter db url for :");
+        setup_struct.storage.db_url = text_io::read!("{}\n");
+    }
+
+    while !valid_path(&setup_struct.storage.file_path) {
+        println!("Enter folder where downloaded contracts will be stored:");
+        setup_struct.storage.file_path = text_io::read!("{}\n");
+        println!("Path invalid, enter a path with write acces");
+    }
+    setup_struct
 }
 
 /// Returns the location of the config file in the dirs::config_dir, for the selected chain.
-pub fn return_config_path(chain: &str) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+fn return_config_path(chain: &str) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     match dirs::config_dir() {
         Some(mut v) => {
             v.push("merter");
@@ -111,7 +216,7 @@ pub fn return_config_path(chain: &str) -> Result<std::path::PathBuf, Box<dyn std
 }
 
 /// Returns the location of the config file in the current working directory of the executable.
-pub fn return_local_path(chain: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn return_local_path(chain: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
     match std::env::current_exe() {
         Ok(mut exe_path) => {
             exe_path.pop();
@@ -129,46 +234,7 @@ pub fn return_local_path(chain: &str) -> Result<PathBuf, Box<dyn std::error::Err
     }
 }
 
-/// Takes the Settings values as string slices and returns
-/// them as a String with toml formatting
-pub fn create_conf_toml(
-    db_url: &str,
-    file_path: &str,
-    jsonrpc_url: &str,
-    jsonrpc_url_2: &str,
-    latency_1: &u32,
-    latency_2: &u32,
-    scan_api: &str,
-    mythx_api: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    // Create struct and convert to toml string.
-    let settings_struct = Settings {
-        storage: Storage {
-            db_url: db_url.to_string(),
-            file_path: file_path.to_string(),
-        },
-        jsonrpc: JsonRpc {
-            url_1: jsonrpc_url.to_string(),
-            url_2: jsonrpc_url_2.to_string(),
-            latency_1: *latency_1,
-            latency_2: *latency_2,
-        },
-        scan: Scan {
-            key: scan_api.to_string(),
-        },
-        mythx: MythX {
-            key: mythx_api.to_string(),
-        },
-    };
-    let toml = toml::to_string(&settings_struct)?;
-
-    Ok(toml)
-}
-
-pub fn create_conf_file(
-    config_path: &Path,
-    toml: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn create_conf_file(config_path: &Path, toml: String) -> Result<(), Box<dyn std::error::Error>> {
     // Create parent directory of config file
     let mut config_dir = PathBuf::from(config_path);
     config_dir.pop();
@@ -179,52 +245,18 @@ pub fn create_conf_file(
     file.write_all(toml.as_bytes())?;
     file.sync_all()?;
 
-    println!("{} written!", config_path.display());
-
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn valid_url(url: &str) -> bool {
+    url.starts_with("https://") || url.starts_with("http://")
+}
 
-    #[test]
-    fn test_create_toml_formatting_and_correct_values() {
-        let toml = create_conf_toml(
-            "dbtest",
-            "filetest",
-            "jsontest1",
-            "jsontest2",
-            &40,
-            &41,
-            "scantest",
-            "mythtest",
-        )
-        .unwrap();
+fn valid_path(path: &str) -> bool {
+    let path_p = Path::new(path);
 
-        let test_values = vec![
-            "[storage]",
-            "db_url = \"dbtest\"",
-            "file_path = \"filetest\"",
-            "",
-            "[jsonrpc]",
-            "url_1 = \"jsontest1\"",
-            "url_2 = \"jsontest2\"",
-            "latency_1 = 40",
-            "latency_2 = 41",
-            "",
-            "[scan]",
-            "key = \"scantest\"",
-            "",
-            "[mythx]",
-            "key = \"mythtest\"",
-        ];
-
-        let mut test_values_iter = test_values.iter();
-        let mut toml_iter = toml.lines();
-        assert!(
-            test_values_iter.all(|&x| Some(x) == toml_iter.next()),
-            "One of the lines in the toml string doesn't match the expected output"
-        );
+    match std::fs::metadata(path_p) {
+        Ok(md) => md.is_dir() && !md.permissions().readonly(),
+        Err(e) => false,
     }
 }
