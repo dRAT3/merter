@@ -72,7 +72,7 @@ impl Settings {
                 s.merge(File::from(local_path).required(false))?;
             }
             Err(e) => {
-                println!("{}", e);
+                println!("Error: couldn't find working directory \n{}", e);
             }
         }
 
@@ -80,7 +80,7 @@ impl Settings {
         s.try_into()
     }
 
-    /// Creates an empty settings struct
+    /// Creates an empty Settings struct
     fn default() -> Self {
         Settings {
             storage: Storage {

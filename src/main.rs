@@ -10,6 +10,7 @@ extern crate toml;
 #[macro_use]
 extern crate serde;
 
+mod csv_scan;
 mod jsonrpc;
 mod settings;
 
@@ -155,36 +156,15 @@ or bnb.",
     }
 
     if res.is_present("csv") {
-        let csv_file = res.value_of_os("csv").unwrap();
+        let csv_file = res.value_of("csv").unwrap();
         println!("Running in csv mode");
-        run_csv(&chain, &min_balance, &scan_limit).await?;
+        csv_scan::run_csv(&chain, &min_balance, &scan_limit, &csv_file).await;
     }
 
     if res.is_present("find") {
         println!("Running in find mode");
     }
 
-    Ok(())
-}
-
-async fn run_csv(
-    chain: &str,
-    min_balance: &f32,
-    limit: &u32,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match settings::Settings::new(chain) {
-        Ok(setting) => {
-            println!("settings test {:?}", setting.storage.file_path);
-        }
-        Err(e) => {
-            println!(
-                "Error while loading settings: {:?} 
-                \nTry running merter --config --{}",
-                e, chain
-            );
-            std::process::exit(1);
-        }
-    }
     Ok(())
 }
 
