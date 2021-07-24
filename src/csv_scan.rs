@@ -12,32 +12,30 @@ struct Entry {
 
 pub async fn run_csv(chain: &str, min_balance: &f32, limit: &u32, csv_file: &str) {
     //Load settings
-    match settings::Settings::new(chain) {
-        Ok(setting) => {
-            //println!("settings test {:?}", setting.storage.file_path);
-            //Check if it is a csv file
-            if is_csv(csv_file) {
-                let mut addr_vec = csv_to_vec(csv_file, min_balance).unwrap_or_else(|err| {
-                    println!("Error while reading csv file: \n{}", err);
-                    std::process::exit(1);
-                });
-                addr_vec.sort_by(|a, b| b.balance.partial_cmp(&a.balance).unwrap());
-                for balance in addr_vec {
-                    println!("{:?}", balance);
-                }
-            } else {
-                println!("{} is not a csv file, exiting", csv_file);
-                std::process::exit(1);
-            }
-        }
-        Err(e) => {
-            println!(
-                "Error while loading settings: {:?} 
-                \nTry running merter --config --{}",
-                e, chain
-            );
+    let settings = settings::Settings::new(chain).unwrap_or_else(|err| {
+        println!(
+            "Couldn't load settings file.
+            \nTry running merter --config --{} \n{}",
+            err, chain
+        );
+        std::process::exit(1);
+    });
+    //Check if passed parameter is a csv file
+    if is_csv(csv_file) {
+        //Create vector of addresses above minimum treshold
+        let mut addr_vec = csv_to_vec(csv_file, min_balance).unwrap_or_else(|err| {
+            println!("Error while reading csv file: \n{}", err);
             std::process::exit(1);
+        });
+
+        addr_vec.sort_by(|a, b| b.balance.partial_cmp(&a.balance).unwrap());
+
+        for entry in addr_vec {
+            println!("{}", entry.address);
         }
+    } else {
+        println!("{} is not a csv file, exiting", csv_file);
+        std::process::exit(1);
     }
 }
 
