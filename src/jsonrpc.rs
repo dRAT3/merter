@@ -36,19 +36,20 @@ pub struct EthBlockCtResponse {
 
 ///Represents a response from is_contract() contains is_contract true if it is a contract
 pub struct IsContractResponse {
-    address: String,
-    is_contract: bool,
+    pub address: String,
+    pub is_contract: bool,
+    pub count: u8,
 }
 
 pub async fn is_contract(
-    address: String,
+    container: IsContractResponse,
     json_rpc_api: String,
 ) -> Result<IsContractResponse, reqwest::Error> {
     let new_eth_request = EthRequest {
         jsonrpc: "2.0".to_string(),
         method: "eth_getCode".to_string(),
         params: [
-            Params::String(address.to_string()),
+            Params::String(container.address.to_string()),
             Params::String("latest".to_string()),
         ],
         id: 1,
@@ -62,16 +63,12 @@ pub async fn is_contract(
         .json()
         .await?;
 
-    let mut response = IsContractResponse {
-        address: address,
-        is_contract: false,
-    };
-
+    let mut container = container;
     if new_eth_response.result.chars().count() > 2 {
-        response.is_contract = true;
+        container.is_contract = true;
     }
 
-    Ok(response)
+    Ok(container)
 }
 
 async fn get_latest_block(json_rpc_api: &str) -> Result<EthBlockTxResponse, reqwest::Error> {

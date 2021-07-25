@@ -2,6 +2,7 @@ use super::jsonrpc;
 use super::settings;
 use super::timers;
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
@@ -38,31 +39,49 @@ pub async fn run_csv(chain: &str, min_balance: f32, limit: usize, csv_file: &str
     });
     addr_vec.sort_by(|a, b| b.balance.partial_cmp(&a.balance).unwrap());
 
-    //Start latency timer, for rate limitting of the api
+    //Start latency timer, for rate limitting of the jsonrpc api
     std::thread::spawn(|| timers::count_down_rpc());
 
-    //Spawn tasks for every entry in the addr_vec that check
-    //if the address is a contract concurrently
+    //Spawn tasks that check if the addresses are contracts and execute them concurrently
     let mut tasks = FuturesUnordered::new();
+    let mut contracts: HashMap<String, bool> = HashMap::new();
 
     for entry in addr_vec {
         let url = setting.jsonrpc.url_1.clone();
         let address = entry.address.clone();
         let latency = setting.jsonrpc.latency_1;
 
+        let container = jsonrpc::IsContractResponse {
+            address: address,
+            is_contract: false,
+            count: 0,
+        };
+
         timers::push_time_rpc(latency);
         let sleep_time = std::time::Duration::from_millis(timers::get_sleep_time_rpc() as u64);
         tokio::time::sleep(sleep_time).await;
 
         tasks.push(tokio::spawn(async move {
-            jsonrpc::is_contract(url, address).await
+            jsonrpc::is_contract(container, url).await
         }));
     }
 
     while let Some(finished_task) = tasks.next().await {
-        match finished_task {
-            Err(e) => { /* e is a JoinError - the task has panicked */ }
-            Ok(result) => {}
+        if finished_task.is_err() {
+            println!(
+                "JoinError while scanning for contract: \n{}",
+                finished_task.err().unwrap()
+            );
+            continue;
+        }
+
+        match finished_task.unwrap() {
+            Err(e) => {}
+            Ok(v) => {
+                if v.is_contract {
+                    contracts.insert(v.address, false);
+                }
+            }
         }
     }
     /*
