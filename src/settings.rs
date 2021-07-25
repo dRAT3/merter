@@ -18,8 +18,8 @@ pub struct Storage {
 pub struct JsonRpc {
     pub url_1: String,
     pub url_2: String,
-    pub latency_1: u32,
-    pub latency_2: u32,
+    pub latency_1: usize,
+    pub latency_2: usize,
 }
 
 /// Represents a BSCScan or EtherScan api key depending on the config file

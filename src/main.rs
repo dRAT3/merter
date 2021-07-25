@@ -13,8 +13,8 @@ extern crate serde;
 mod csv_scan;
 mod jsonrpc;
 mod settings;
+mod timers;
 
-use awaitgroup::WaitGroup;
 use clap::{App, AppSettings, Arg, ArgGroup};
 use serde::{Deserialize, Serialize};
 
@@ -144,7 +144,7 @@ or bnb.",
     let scan_limit = res
         .value_of("limit")
         .unwrap_or("0")
-        .parse::<u32>()
+        .parse::<usize>()
         .unwrap_or_else(|_| {
             println!("Error: --limit option must be a positive number");
             std::process::exit(1);
@@ -158,7 +158,7 @@ or bnb.",
     if res.is_present("csv") {
         let csv_file = res.value_of("csv").unwrap();
         println!("Running in csv mode");
-        csv_scan::run_csv(&chain, &min_balance, &scan_limit, &csv_file).await;
+        csv_scan::run_csv(&chain, min_balance, scan_limit, &csv_file).await;
     }
 
     if res.is_present("find") {

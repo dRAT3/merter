@@ -1,8 +1,12 @@
+use super::jsonrpc;
 use super::settings;
+use super::timers;
 
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
+
+use futures::stream::{FuturesUnordered, StreamExt};
 
 #[derive(Default, Debug)]
 struct Entry {
@@ -10,9 +14,9 @@ struct Entry {
     balance: f32,
 }
 
-pub async fn run_csv(chain: &str, min_balance: &f32, limit: &u32, csv_file: &str) {
+pub async fn run_csv(chain: &str, min_balance: f32, limit: usize, csv_file: &str) {
     //Load settings
-    let settings = settings::Settings::new(chain).unwrap_or_else(|err| {
+    let setting = settings::Settings::new(chain).unwrap_or_else(|err| {
         println!(
             "Couldn't load settings file.
             \nTry running merter --config --{} \n{}",
@@ -32,15 +36,45 @@ pub async fn run_csv(chain: &str, min_balance: &f32, limit: &u32, csv_file: &str
         println!("Error while reading csv file: \n{}", err);
         std::process::exit(1);
     });
-
     addr_vec.sort_by(|a, b| b.balance.partial_cmp(&a.balance).unwrap());
 
+    //Start latency timer, for rate limitting of the api
+    std::thread::spawn(|| timers::count_down_rpc());
+
+    //Spawn tasks for every entry in the addr_vec that check
+    //if the address is a contract concurrently
+    let mut tasks = FuturesUnordered::new();
+
     for entry in addr_vec {
-        println!("{}", entry.address);
+        let url = setting.jsonrpc.url_1.clone();
+        let address = entry.address.clone();
+        let latency = setting.jsonrpc.latency_1;
+
+        timers::push_time_rpc(latency);
+        let sleep_time = std::time::Duration::from_millis(timers::get_sleep_time_rpc() as u64);
+        tokio::time::sleep(sleep_time).await;
+
+        tasks.push(tokio::spawn(async move {
+            jsonrpc::is_contract(url, address).await;
+        }));
     }
+
+    while let Some(finished_task) = tasks.next().await {
+        match finished_task {
+            Err(e) => { /* e is a JoinError - the task has panicked */ }
+            Ok(result) => { /* result is the rresult of check_if_contract */ }
+        }
+    }
+    /*
+    for (ix, entry) in addr_vec.iter().enumerate() {
+        if ix > limit && limit != 0 {
+            break;
+        }
+    }
+    */
 }
 
-fn csv_to_vec(csv_file: &str, min_balance: &f32) -> Result<Vec<Entry>, Box<dyn Error>> {
+fn csv_to_vec(csv_file: &str, min_balance: f32) -> Result<Vec<Entry>, Box<dyn Error>> {
     let mut addr_vec: Vec<Entry> = Vec::new();
 
     let mut rdr = csv::Reader::from_path(csv_file)?;
@@ -55,7 +89,7 @@ fn csv_to_vec(csv_file: &str, min_balance: &f32) -> Result<Vec<Entry>, Box<dyn E
         entry.balance = balance;
         entry.address = address.to_string();
 
-        if balance > min_balance.to_owned() {
+        if balance > min_balance {
             addr_vec.push(entry);
         }
     }

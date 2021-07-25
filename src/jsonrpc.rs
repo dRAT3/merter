@@ -1,20 +1,12 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-type Db = Arc<Mutex<HashMap<String, bool>>>;
-
-static JSONRPCAPI: &'static str = "";
-static BSCSCANAPI: &'static str = "";
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum Params {
+enum Params {
     String(String),
     Boolean(bool),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct EthRequest {
+struct EthRequest {
     jsonrpc: String,
     method: String,
     params: [Params; 2],
@@ -42,7 +34,47 @@ pub struct EthBlockCtResponse {
     result: String,
 }
 
-async fn get_block_addresses() -> Result<EthBlockTxResponse, reqwest::Error> {
+///Represents a response from is_contract() contains is_contract true if it is a contract
+pub struct IsContractResponse {
+    address: String,
+    is_contract: bool,
+}
+
+pub async fn is_contract(
+    address: String,
+    json_rpc_api: String,
+) -> Result<IsContractResponse, reqwest::Error> {
+    let new_eth_request = EthRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "eth_getCode".to_string(),
+        params: [
+            Params::String(address.to_string()),
+            Params::String("latest".to_string()),
+        ],
+        id: 1,
+    };
+
+    let new_eth_response: EthBlockCtResponse = reqwest::Client::new()
+        .post(&json_rpc_api)
+        .json(&new_eth_request)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let mut response = IsContractResponse {
+        address: address,
+        is_contract: false,
+    };
+
+    if new_eth_response.result.chars().count() > 2 {
+        response.is_contract = true;
+    }
+
+    Ok(response)
+}
+
+async fn get_latest_block(json_rpc_api: &str) -> Result<EthBlockTxResponse, reqwest::Error> {
     let new_eth_request = EthRequest {
         jsonrpc: "2.0".to_string(),
         method: "eth_getBlockByNumber".to_string(),
@@ -51,7 +83,7 @@ async fn get_block_addresses() -> Result<EthBlockTxResponse, reqwest::Error> {
     };
 
     let new_eth_response: EthBlockTxResponse = reqwest::Client::new()
-        .post(JSONRPCAPI)
+        .post(json_rpc_api)
         .json(&new_eth_request)
         .send()
         .await?
@@ -63,38 +95,3 @@ async fn get_block_addresses() -> Result<EthBlockTxResponse, reqwest::Error> {
 
     Ok(new_eth_response)
 }
-
-async fn check_if_contract(address: String, db: Db) -> Result<(), reqwest::Error> {
-    let new_eth_request = EthRequest {
-        jsonrpc: "2.0".to_string(),
-        method: "eth_getCode".to_string(),
-        params: [
-            Params::String(address.to_string()),
-            Params::String("latest".to_string()),
-        ],
-        id: 1,
-    };
-    println!("eth request set-up");
-
-    let new_eth_response: EthBlockCtResponse = reqwest::Client::new()
-        .post(JSONRPCAPI)
-        .json(&new_eth_request)
-        .send()
-        .await?
-        .json()
-        .await?;
-
-    println!("eth request sent");
-
-    println!("{}", new_eth_response.result);
-
-    if new_eth_response.result.chars().count() > 2 {
-        let mut db = db.lock().unwrap();
-        db.insert(address.to_string(), false);
-        Ok(())
-    } else {
-        Ok(())
-    }
-}
-
-async fn get_contract_data() {}
