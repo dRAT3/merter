@@ -55,14 +55,14 @@ pub async fn run_csv(chain: &str, min_balance: f32, limit: usize, csv_file: &str
         tokio::time::sleep(sleep_time).await;
 
         tasks.push(tokio::spawn(async move {
-            jsonrpc::is_contract(url, address).await;
+            jsonrpc::is_contract(url, address).await
         }));
     }
 
     while let Some(finished_task) = tasks.next().await {
         match finished_task {
             Err(e) => { /* e is a JoinError - the task has panicked */ }
-            Ok(result) => { /* result is the rresult of check_if_contract */ }
+            Ok(result) => {}
         }
     }
     /*
