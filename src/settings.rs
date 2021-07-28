@@ -152,7 +152,9 @@ fn ask_for_settings(chain: &str, config_path: &Path) -> Settings {
     while !valid_url(&setup_struct.jsonrpc.url_1) {
         println!("Enter JSON-RPC 1 api url:");
         setup_struct.jsonrpc.url_1 = text_io::read!("{}\n");
-        println!("url invalid, use http(s)://");
+        if !valid_url(&setup_struct.jsonrpc.url_1) {
+            println!("url invalid, use http(s)://");
+        }
     }
 
     while !valid_url(&setup_struct.jsonrpc.url_2) {
@@ -161,7 +163,9 @@ fn ask_for_settings(chain: &str, config_path: &Path) -> Settings {
         if setup_struct.jsonrpc.url_2.eq("s") {
             break;
         }
-        println!("url invalid, use http(s)://");
+        if !valid_url(&setup_struct.jsonrpc.url_2) {
+            println!("url invalid, use http(s)://");
+        }
     }
 
     println!("Enter JSON-RPC 1's latency in ms");

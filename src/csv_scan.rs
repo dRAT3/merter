@@ -49,7 +49,7 @@ pub async fn run_csv(chain: &str, min_balance: f32, limit: usize, csv_file: &str
     for entry in addr_vec {
         let url = setting.jsonrpc.url_1.clone();
         let address = entry.address.clone();
-        let latency = setting.jsonrpc.latency_1;
+        let latency = setting.jsonrpc.latency_1.clone();
 
         let container = jsonrpc::IsContractResponse {
             address: address,
@@ -76,13 +76,46 @@ pub async fn run_csv(chain: &str, min_balance: f32, limit: usize, csv_file: &str
         }
 
         match finished_task.unwrap() {
-            Err(e) => {}
+            Err(e) => {
+                if e.container.count > 5 {
+                    println!(
+                        "Can't see if {} is a contract, skipping. \nError: {}",
+                        e.container.address, e.error
+                    );
+                } else {
+                    println!(
+                        "Error while checking {}, retrying. \nError: {}",
+                        e.container.address, e.error
+                    );
+
+                    let url = setting.jsonrpc.url_2.clone();
+                    let latency = setting.jsonrpc.latency_2.clone();
+
+                    if e.container.count % 2 == 0 {
+                        let url = setting.jsonrpc.url_1.clone();
+                        let latency = setting.jsonrpc.latency_1.clone();
+                    }
+
+                    timers::push_time_rpc(latency);
+                    let sleep_time =
+                        std::time::Duration::from_millis(timers::get_sleep_time_rpc() as u64);
+                    tokio::time::sleep(sleep_time).await;
+
+                    tasks.push(tokio::spawn(async move {
+                        jsonrpc::is_contract(e.container, url).await
+                    }));
+                }
+            }
             Ok(v) => {
                 if v.is_contract {
                     contracts.insert(v.address, false);
                 }
             }
         }
+    }
+
+    for (key, value) in contracts {
+        println!("{}, {}", key, value);
     }
     /*
     for (ix, entry) in addr_vec.iter().enumerate() {
@@ -92,6 +125,8 @@ pub async fn run_csv(chain: &str, min_balance: f32, limit: usize, csv_file: &str
     }
     */
 }
+
+fn await_is_contract_thread() {}
 
 fn csv_to_vec(csv_file: &str, min_balance: f32) -> Result<Vec<Entry>, Box<dyn Error>> {
     let mut addr_vec: Vec<Entry> = Vec::new();
